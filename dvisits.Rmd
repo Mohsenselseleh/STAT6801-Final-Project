@@ -1,0 +1,419 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+```{r}
+install.packages("dplyr")
+install.packages("tidyverse")
+library(MASS) #Boston Housing Data Set
+library(dplyr) #Data Wrangling
+library(tidyverse) #Data Wrangling
+library(knitr) #Knitting RMDs and functionalities
+library(reshape2) #Data Wrangling
+library(ggplot2) #Data Visualization
+library(GGally) #Data Visualization
+library(boot) #Resampling methods
+library(rpart) #Tree modeling
+library(rattle) #Better Vizzes
+library(mgcv) #GAM modeling
+library(neuralnet) #Neural Networks Model
+library(plyr) #Data Wrangling
+library(caret) #Cross Validation for Neural Networks
+library(e1071) #SVM model
+library(randomForest) #Random Forest
+library(gbm) #Gradient Boosting
+```
+
+
+```{r}
+install.packages("faraway")
+library(faraway)
+```
+
+
+```{r}
+data(dvisits, package="faraway")
+summary(dvisits)
+dvisits
+str(dvisits)
+```
+
+
+```{r}
+dvisits$doctorco
+```
+
+
+```{r}
+#We set up the data using a random seed to sample the data into 75% training and 25% training data. We dont have sufficient data points to have a #validation data as well.
+#Set Seed
+set.seed(10857825)
+#Training and Testing Data
+subset2 = sample(nrow(dvisits), nrow(dvisits) * 0.75)
+dvisits.train2 = dvisits[subset2, ]
+dvisits.test2 = dvisits[-subset2, ]
+```
+
+
+```{r}
+#GLM
+set.seed(10857825)
+doctor_poisson=glm(doctorco ~ sex + age + agesq + income + levyplus + freepoor + freerepa + illness + actdays + hscore + chcond1 + chcond2, family=poisson, data = dvisits.train2)
+summary(glmmodel)
+```
+
+
+```{r}
+extractAIC(glmmodel)
+```
+
+
+```{r}
+#Plot the residuals and the fitted data
+par(mfrow=c(2,2))
+plot(doctor_poisson)
+```
+
+
+```{r}
+#Use backward elimination
+step(doctor_poisson, direction="backward")
+```
+
+
+```{r}
+#Prediction with training data
+doctorco = predict(object = glmmodel, newdata = dvisits.train2)
+mean((doctorco-dvisits.train2$doctorco)^2)
+```
+
+
+```{r}
+# (Gaussian) linear model
+doctor_lm <- lm(doctorco ~ sex + age + agesq + income + levyplus + freepoor + freerepa + illness + actdays + hscore + chcond1 + chcond2, data = dvisits.train2)
+doctor_lm
+```
+
+
+```{r}
+summary(doctor_lm)
+```
+
+
+```{r}
+extractAIC(doctor_lm)
+```
+
+
+```{r}
+#Residual Plots
+par(mfrow=c(2,2))
+plot(doctor_lm)
+```
+
+
+```{r}
+#Trees
+#Regression Trees
+install.packages("rpart")
+library(rpart)
+dvisits.rpart <- rpart(formula = doctorco ~ sex + age + agesq + income + levyplus + freepoor + freerepa + illness + actdays + hscore + chcond1 + chcond2, data = dvisits.train2)
+dvisits.rpart
+```
+
+
+```{r}
+install.packages("rpart.plot")
+library(rpart.plot)
+rpart.plot(dvisits.rpart)
+```
+
+
+```{r}
+# prediction with tree
+dvisits.train.pred.tree = predict(dvisits.rpart,dvisits.train2)
+mean((dvisits.train.pred.tree - dvisits.train2$doctorco)^2)
+```
+
+
+```{r}
+#Pruning rpart cp
+plotcp(dvisits.rpart)
+```
+
+
+```{r}
+printcp(dvisits.rpart)
+```
+
+
+```{r}
+#GAM
+install.packages("gam")
+library(gam)
+
+
+gammodel<- gam(formula = doctorco ~ sex + freepoor + s(illness) + s(actdays) +
+age + hscore + income, family=gaussian, data = dvisits)
+family=gaussian
+print(AIC(gammodel))
+BIC(gammodel)
+```
+
+
+```{r}
+plot(gammodel, shade= TRUE, seWithMean = TRUE, scale=0)
+```
+
+
+```{r}
+#In-sample performance
+mean(residuals(gammodel)^2) #In-Sample
+```
+
+
+```{r}
+#Neural Networks
+#Scaling Inputs- To get a range from 0-1
+# install package
+install.packages("neuralnet")
+# load library
+require(neuralnet)
+
+# fit neural network
+nn=neuralnet(doctorco ~ sex + age + agesq + income + levyplus + freepoor + freerepa + illness + actdays + hscore + chcond1 + chcond2,data=dvisits, hidden=3,act.fct = "logistic",
+                linear.output = FALSE)
+```
+
+
+```{r}
+# plot neural network
+plot(nn)
+```
+
+
+```{r}
+## Prediction using neural network
+## Prediction using neural network
+Predict=compute(nn,dvisits.train2)
+Predict$net.result
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+pr.nn <- compute(nn,dvisits.test2[,1:13])
+pr.nn_ <- pr.nn$net.result*(max(dvisits$doctorco)-min(dvisits$doctorco))+min(dvisits$doctorco)
+test.r <- (dvisits.test2$doctorco)*(max(dvisits$doctorco)-min(dvisits$doctorco))+min(dvisits$doctorco)
+MSE.nn <- sum((test.r - pr.nn_)^2)/nrow(dvisits.test2 )
+print(MSE.nn)
+```
+
+
+```{r}
+par(mfrow=c(1,2))
+plot(dvisits.test2$doctorco,pr.nn_,col='red',main='Real vs predicted NN',pch=18,cex=0.7)
+abline(0,1,lwd=2)
+legend('bottomright',legend='NN',pch=18,col='red', bty='n')
+plot(dvisits.test2$doctorco,doctor_lm,col='blue',main='Real vs predicted lm',pch=18, cex=0.7)
+abline(0,1,lwd=2)
+legend('bottomright',legend='LM',pch=18,col='blue', bty='n', cex=.95)
+```
+
+
+```{r}
+plot(dvisits.test2$doctorco,pr.nn_,col='red',main='Real vs predicted NN',pch=18,cex=0.7)
+points(dvisits.test2$doctorco,doctor_lm,col='blue',pch=18,cex=0.7)
+abline(0,1,lwd=2)
+legend('bottomright',legend=c('NN','LM'),pch=18,col=c('red','blue'))
+```
+
+
+```{r}
+# Converting probabilities into binary classes setting threshold level 0.5
+prob <- Predict$net.result
+pred <- ifelse(prob>0.5, 1, 0)
+pred
+```
+
+
+```{r}
+```
+
+
+```{r}
+index <- sample(1:nrow(dvisits),round(0.75*nrow(dvisits)))
+train <- dvisits[index,]
+test <- dvisits[-index,]
+lm.fit <- glm(doctorco ~ sex + age + agesq + income + levyplus + freepoor + freerepa + illness + actdays + hscore + chcond1 + chcond2, data=train)
+summary(lm.fit)
+pr.lm <- predict(lm.fit,test)
+MSE.lm <- sum((pr.lm - test$doctorco)^2)/nrow(test)
+MSE.lm
+```
+
+
+```{r}
+#Preparing to fit the neural network
+maxs <- apply(dvisits, 2, max) 
+mins <- apply(dvisits, 2, min)
+scaled <- as.data.frame(scale(dvisits, center = mins, scale = maxs - mins))
+train_ <- scaled[index,]
+test_ <- scaled[-index,]
+```
+
+
+```{r}
+#Parameters
+library(neuralnet)
+n <- names(train_)
+f <- as.formula(paste("doctorco ~", paste(n[!n %in% "medv"], collapse = " + ")))
+nn <- neuralnet(f,data=train_,hidden=c(5,3),linear.output=T)
+```
+
+
+```{r}
+plot(nn)
+```
+
+
+```{r}
+#Predicting medv using the neural network
+pr.nn <- compute(nn,test_)
+pr.nn_ <- pr.nn$net.result*(max(dvisits$doctorco)-min(dvisits$doctorco))+min(dvisits$doctorco)
+test.r <- (test_$doctorco)*(max(dvisits$doctorco)-min(dvisits$doctorco))+min(dvisits$doctorco)
+MSE.nn <- sum((test.r - pr.nn_)^2)/nrow(dvisits.test2 )
+print(paste(MSE.lm,MSE.nn))
+```
+
+
+```{r}
+print(paste(MSE.lm,MSE.nn))
+```
+
+
+```{r}
+par(mfrow=c(1,2))
+plot(test_$doctorco,pr.nn_,col='red',main='Real vs predicted NN',pch=18,cex=0.7)
+abline(0,1,lwd=2)
+legend('bottomright',legend='NN',pch=18,col='red', bty='n')
+plot(test_$doctorco,pr.lm,col='blue',main='Real vs predicted lm',pch=18, cex=0.7)
+abline(0,1,lwd=2)
+legend('bottomright',legend='LM',pch=18,col='blue', bty='n', cex=.95)
+```
+
+
+```{r}
+plot(test_$doctorco,pr.nn_,col='red',main='Real vs predicted NN',pch=18,cex=0.7)
+points(test_$doctorco,pr.lm,col='blue',pch=18,cex=0.7)
+abline(0,1,lwd=2)
+legend('bottomright',legend=c('NN','LM'),pch=18,col=c('red','blue'))
+```
+
+
+```{r}
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+#Parameters
+library(neuralnet)
+n <- names(train_)
+f <- as.formula(paste("doctorco~", paste(n[!n %in% "doctorco"], collapse = " + ")))
+nn <- neuralnet(f,data=train_,hidden=c(5,3),linear.output=T)
+
+```
+
+
+```{r}
+plot(nn)
+```
+
+
+```{r}
+#Predicting medv using the neural network
+pr.nn <- compute(nn,test_[,1:13])
+pr.nn_ <- pr.nn$net.result*(max(data$doctorco)-min(data$doctorco))+min(data$doctorco)
+test.r <- (test_$doctorco)*(max(data$doctorco)-min(data$doctorco))+min(data$doctorco)
+MSE.nn <- sum((test.r - pr.nn_)^2)/nrow(test_)
+```
+
+
+```{r}
+print(paste(MSE.lm,MSE.nn))
+```
+
+
+```{r}
+par(mfrow=c(1,2))
+plot(test$medv,pr.nn_,col='red',main='Real vs predicted NN',pch=18,cex=0.7)
+abline(0,1,lwd=2)
+legend('bottomright',legend='NN',pch=18,col='red', bty='n')
+plot(test$medv,pr.lm,col='blue',main='Real vs predicted lm',pch=18, cex=0.7)
+abline(0,1,lwd=2)
+legend('bottomright',legend='LM',pch=18,col='blue', bty='n', cex=.95)
+```
+
+
+```{r}
+print(paste(MSE.lm,MSE.nn))
+```
+
+
+```{r}
+#SVM
+install.packages("e1071")
+library(e1071)
+svmmodel<-svm(doctorco~., dvisits.train2)
+mean(residuals(svmmodel)^2)
+predsvm<- predict(svmmodel, dvisits.test2)
+mean((predsvm-dvisits.test2$doctorco)^2)
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
